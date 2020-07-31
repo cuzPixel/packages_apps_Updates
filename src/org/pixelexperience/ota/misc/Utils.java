@@ -163,8 +163,8 @@ public class Utils {
         return String.format(Constants.MAINTAINER_URL, username);
     }
 
-    public static String getDownloadWebpageUrl(String fileName) {
-        return String.format(Constants.DOWNLOAD_WEBPAGE_URL, SystemProperties.get(Constants.PROP_DEVICE), fileName);
+    public static String getChangelogURL() {
+        return String.format(Constants.CHANGELOG_URL, SystemProperties.get(Constants.PROP_DEVICE), SystemProperties.get(Constants.PROP_BUILD_VERSION));
     }
 
     public static void triggerUpdate(Context context) {
