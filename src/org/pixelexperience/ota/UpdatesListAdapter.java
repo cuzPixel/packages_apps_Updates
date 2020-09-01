@@ -23,7 +23,7 @@ import android.content.IntentFilter;
 import android.content.SharedPreferences;
 import android.content.pm.PackageManager;
 import android.content.res.Resources;
-import android.net.Uri;
+import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.text.method.LinkMovementMethod;
 import android.util.Log;
@@ -56,8 +56,11 @@ import org.pixelexperience.ota.misc.Utils;
 import org.pixelexperience.ota.model.UpdateInfo;
 import org.pixelexperience.ota.model.UpdateStatus;
 
+import java.io.BufferedReader;
 import java.io.File;
+import java.io.InputStreamReader;
 import java.io.IOException;
+import java.net.URL;
 import java.text.DateFormat;
 import java.text.NumberFormat;
 
@@ -167,6 +170,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         viewHolder.mProgressBar.setVisibility(View.VISIBLE);
         viewHolder.mProgressText.setVisibility(View.VISIBLE);
         viewHolder.mBuildSize.setVisibility(View.GONE);
+        setButtonAction(viewHolder.mDetails, Action.INFO, true);
     }
 
     private void handleNotActiveStatus(ViewHolder viewHolder) {
@@ -191,6 +195,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         viewHolder.mProgressText.setVisibility(View.GONE);
         viewHolder.mBuildSize.setVisibility(View.VISIBLE);
         viewHolder.mBuildName.setSelected(true);
+        setButtonAction(viewHolder.mDetails, Action.INFO, true);
     }
 
     @Override
@@ -232,15 +237,6 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         viewHolder.mBuildDate.setText(buildDate);
         viewHolder.mBuildName.setText(buildVersion);
         viewHolder.mBuildName.setCompoundDrawables(null, null, null, null);
-        viewHolder.mDetails.setOnClickListener(v -> {
-            try {
-                Intent intent = new Intent(Intent.ACTION_VIEW, Uri.parse(Utils.getChangelogURL()));
-                intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                mActivity.startActivity(intent);
-            } catch (Exception ex) {
-                mActivity.showSnackbar(R.string.error_open_url, Snackbar.LENGTH_SHORT);
-            }
-        });
 
         if (activeLayout) {
             handleActiveStatus(viewHolder);
@@ -360,7 +356,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                 button.setText(R.string.details_button);
                 button.setCompoundDrawablesWithIntrinsicBounds(R.drawable.ic_updateui_information, 0, 0, 0);
                 button.setEnabled(enabled);
-                clickListener = enabled ? view -> showInfoDialog() : null;
+                clickListener = enabled ? view -> new getChangelogDialog().execute(Utils.getChangelogURL()) : null;
             }
             break;
             case DELETE: {
@@ -534,6 +530,49 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                 .show();
         TextView textView = infoDialog.findViewById(android.R.id.message);
         textView.setMovementMethod(LinkMovementMethod.getInstance());
+    }
+
+    private class getChangelogDialog extends AsyncTask<String, Void, String> {
+
+        protected String doInBackground(String... strings) {
+            String outputString = "";
+            String inputString;
+            int i = 0;
+
+            try {
+                URL changelog = new URL(strings[0]);
+                BufferedReader in = new BufferedReader(
+                        new InputStreamReader(
+                        changelog.openStream()));
+
+                while((inputString = in.readLine()) != null) {
+                    // don't include the top 3 lines of the changelog
+                    if (i >= 3) {
+                        outputString += inputString + "\n";
+                    }
+                    i++;
+                }
+
+                in.close();
+                return outputString;
+            } catch(IOException e) {
+                Log.e(TAG, "Could not fetch changelog from " + strings[0]);
+                return mActivity.getResources().getString(R.string.error_open_url);
+            }
+        }
+
+        protected void onPostExecute(String result) {
+            if (infoDialog != null) {
+                infoDialog.dismiss();
+            }
+            infoDialog = new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+                    .setTitle(R.string.details_button)
+                    .setPositiveButton(android.R.string.ok, null)
+                    .setMessage(result)
+                    .show();
+            TextView textView = (TextView) infoDialog.findViewById(android.R.id.message);
+            textView.setMovementMethod(LinkMovementMethod.getInstance());
+        }
     }
 
     void onRequestPermissionsResult(int requestCode, int[] grantResults) {
