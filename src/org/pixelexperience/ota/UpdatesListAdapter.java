@@ -18,23 +18,20 @@ package org.pixelexperience.ota;
 
 import android.annotation.SuppressLint;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.Intent;
 import android.content.IntentFilter;
-import android.content.SharedPreferences;
-import android.content.pm.PackageManager;
 import android.content.res.Resources;
 import android.os.AsyncTask;
 import android.os.BatteryManager;
 import android.text.method.LinkMovementMethod;
 import android.util.Log;
-import android.util.TypedValue;
 import android.view.Gravity;
 import android.view.LayoutInflater;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
-import android.widget.CheckBox;
 import android.widget.ImageView;
 import android.widget.ProgressBar;
 import android.widget.TextView;
@@ -43,21 +40,17 @@ import androidx.appcompat.view.ContextThemeWrapper;
 import androidx.appcompat.view.menu.MenuBuilder;
 import androidx.appcompat.view.menu.MenuPopupHelper;
 import androidx.appcompat.widget.PopupMenu;
-import androidx.preference.PreferenceManager;
+import androidx.localbroadcastmanager.content.LocalBroadcastManager;
 import androidx.recyclerview.widget.RecyclerView;
-
-import com.google.android.material.snackbar.Snackbar;
 
 import org.pixelexperience.ota.controller.UpdaterController;
 import org.pixelexperience.ota.misc.Constants;
-import org.pixelexperience.ota.misc.PermissionsUtils;
 import org.pixelexperience.ota.misc.StringGenerator;
 import org.pixelexperience.ota.misc.Utils;
 import org.pixelexperience.ota.model.UpdateInfo;
 import org.pixelexperience.ota.model.UpdateStatus;
 
 import java.io.BufferedReader;
-import java.io.File;
 import java.io.InputStreamReader;
 import java.io.IOException;
 import java.net.URL;
@@ -72,21 +65,16 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
             | BatteryManager.BATTERY_PLUGGED_USB
             | BatteryManager.BATTERY_PLUGGED_WIRELESS;
 
-    private final float mAlphaDisabledValue;
-
     private String mDownloadId = null;
     private UpdaterController mUpdaterController;
-    private UpdatesListActivity mActivity;
     private UpdateInfo mUpdate;
 
     private AlertDialog infoDialog;
 
-    UpdatesListAdapter(UpdatesListActivity activity) {
-        mActivity = activity;
+    private Context mContext;
+    private LocalBroadcastManager mBroadcastManager;
 
-        TypedValue tv = new TypedValue();
-        mActivity.getTheme().resolveAttribute(android.R.attr.disabledAlpha, tv, true);
-        mAlphaDisabledValue = tv.getFloat();
+    UpdatesListAdapter() {
     }
 
     @Override
@@ -99,10 +87,16 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
     @Override
     public void onViewDetachedFromWindow(ViewHolder holder) {
         super.onViewDetachedFromWindow(holder);
-
         if (infoDialog != null) {
             infoDialog.dismiss();
         }
+    }
+
+    @Override
+    public void onAttachedToRecyclerView(RecyclerView recyclerView) {
+        super.onAttachedToRecyclerView(recyclerView);
+        mContext = recyclerView.getContext();
+        mBroadcastManager = LocalBroadcastManager.getInstance(mContext);
     }
 
     void setUpdaterController(UpdaterController updaterController) {
@@ -125,12 +119,12 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                     mUpdate.getProgress() / 100.f);
             long eta = mUpdate.getEta();
             if (eta > 0) {
-                CharSequence etaString = StringGenerator.formatETA(mActivity, eta * 1000);
-                viewHolder.mProgressText.setText(mActivity.getString(
+                CharSequence etaString = StringGenerator.formatETA(mContext, eta * 1000);
+                viewHolder.mProgressText.setText(mContext.getString(
                         R.string.list_download_progress_eta_new, downloaded, total, etaString,
                         percentage));
             } else {
-                viewHolder.mProgressText.setText(mActivity.getString(
+                viewHolder.mProgressText.setText(mContext.getString(
                         R.string.list_download_progress_new, downloaded, total, percentage));
             }
             setButtonAction(viewHolder.mAction, Action.PAUSE, mUpdate.getStatus() != UpdateStatus.STARTING);
@@ -160,7 +154,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
             String total = Utils.readableFileSize(mUpdate.getFileSize());
             String percentage = NumberFormat.getPercentInstance().format(
                     mUpdate.getProgress() / 100.f);
-            viewHolder.mProgressText.setText(mActivity.getString(R.string.list_download_progress_new,
+            viewHolder.mProgressText.setText(mContext.getString(R.string.list_download_progress_new,
                     downloaded, total, percentage));
             viewHolder.mProgressBar.setIndeterminate(false);
             viewHolder.mProgressBar.setProgress(mUpdate.getProgress());
@@ -174,7 +168,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
     }
 
     private void handleNotActiveStatus(ViewHolder viewHolder) {
-        if (Utils.getPersistentStatus(mActivity) == UpdateStatus.Persistent.VERIFIED) {
+        if (Utils.getPersistentStatus(mContext) == UpdateStatus.Persistent.VERIFIED) {
             setupOptionMenuListeners(true, viewHolder);
             setButtonAction(viewHolder.mAction,
                     Utils.canInstall(mUpdate) ? Action.INSTALL : Action.DELETE, !isBusy());
@@ -184,7 +178,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
             setButtonAction(viewHolder.mAction, Action.INFO, !isBusy());
             viewHolder.mDetails.setVisibility(View.GONE);
         } else {
-            setupOptionMenuListeners( false, viewHolder);
+            setupOptionMenuListeners(false, viewHolder);
             setButtonAction(viewHolder.mAction, Action.DOWNLOAD, !isBusy());
             viewHolder.mDetails.setVisibility(View.VISIBLE);
         }
@@ -216,7 +210,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         viewHolder.itemView.setSelected(true);
 
         boolean activeLayout;
-        switch (Utils.getPersistentStatus(mActivity)) {
+        switch (Utils.getPersistentStatus(mContext)) {
             case UpdateStatus.Persistent.UNKNOWN:
                 activeLayout = mUpdate.getStatus() == UpdateStatus.STARTING;
                 break;
@@ -225,13 +219,14 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                         mUpdate.getStatus() != UpdateStatus.INSTALLATION_FAILED;
                 break;
             case UpdateStatus.Persistent.DOWNLOADING:
+            case UpdateStatus.Persistent.STARTING_DOWNLOAD:
                 activeLayout = true;
                 break;
             default:
                 throw new RuntimeException("Unknown update status");
         }
 
-        String buildDate = StringGenerator.getDateLocalizedUTC(mActivity,
+        String buildDate = StringGenerator.getDateLocalizedUTC(mContext,
                 DateFormat.LONG, mUpdate.getTimestamp());
         String buildVersion = mUpdate.getName();
         viewHolder.mBuildDate.setText(buildDate);
@@ -270,37 +265,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
     }
 
     private void startDownloadWithWarning() {
-        if (!Utils.isNetworkAvailable(mActivity)) {
-            mUpdaterController.notifyNetworkUnavailable();
-            return;
-        }
-        SharedPreferences preferences = PreferenceManager.getDefaultSharedPreferences(mActivity);
-        boolean warn = preferences.getBoolean(Constants.PREF_MOBILE_DATA_WARNING, true);
-        if (Utils.isOnWifiOrEthernet(mActivity) || !warn) {
-            mUpdaterController.startDownload();
-            return;
-        }
-
-        View checkboxView = LayoutInflater.from(mActivity).inflate(R.layout.checkbox_view, null);
-        CheckBox checkbox = checkboxView.findViewById(R.id.checkbox);
-        checkbox.setText(R.string.checkbox_mobile_data_warning);
-
-        new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
-                .setTitle(R.string.update_on_mobile_data_title)
-                .setMessage(R.string.update_on_mobile_data_message)
-                .setView(checkboxView)
-                .setPositiveButton(R.string.action_download,
-                        (dialog, which) -> {
-                            if (checkbox.isChecked()) {
-                                preferences.edit()
-                                        .putBoolean(Constants.PREF_MOBILE_DATA_WARNING, false)
-                                        .apply();
-                                mActivity.supportInvalidateOptionsMenu();
-                            }
-                            mUpdaterController.startDownload();
-                        })
-                .setNegativeButton(android.R.string.cancel, null)
-                .show();
+        mBroadcastManager.sendBroadcast(new Intent(UpdatesActivity.ACTION_START_DOWNLOAD_WITH_WARNING));
     }
 
     private void setButtonAction(Button button, Action action, boolean enabled) {
@@ -330,8 +295,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                     if (canInstall) {
                         mUpdaterController.resumeDownload();
                     } else {
-                        mActivity.showSnackbar(R.string.snack_update_not_installable,
-                                Snackbar.LENGTH_LONG);
+                        showSnackbar(mContext.getString(R.string.snack_update_not_installable));
                     }
                 } : null;
             }
@@ -346,8 +310,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                     if (canInstall) {
                         getInstallDialog().show();
                     } else {
-                        mActivity.showSnackbar(R.string.snack_update_not_installable,
-                                Snackbar.LENGTH_LONG);
+                        showSnackbar(mContext.getString(R.string.snack_update_not_installable));
                     }
                 } : null;
             }
@@ -370,7 +333,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                 clickListener = null;
                 button.setCompoundDrawablesWithIntrinsicBounds(0, 0, 0, 0);
         }
-        button.setAlpha(enabled ? 1.f : mAlphaDisabledValue);
+        button.setAlpha(enabled ? 1.f : 0.5f);
 
         // Disable action mode when a button is clicked
         button.setOnClickListener(v -> {
@@ -386,7 +349,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
     }
 
     private AlertDialog.Builder getDeleteDialog() {
-        return new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+        return new AlertDialog.Builder(mContext, R.style.AppTheme_AlertDialogStyle)
                 .setTitle(R.string.confirm_delete_dialog_title)
                 .setMessage(R.string.confirm_delete_dialog_message)
                 .setPositiveButton(android.R.string.ok,
@@ -399,7 +362,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
 
     @SuppressLint("RestrictedApi")
     private void setupOptionMenuListeners(final boolean canDelete, ViewHolder viewHolder) {
-        ContextThemeWrapper wrapper = new ContextThemeWrapper(mActivity,
+        ContextThemeWrapper wrapper = new ContextThemeWrapper(mContext,
                 R.style.AppTheme_PopupMenuOverlapAnchor);
         PopupMenu popupMenu = new PopupMenu(wrapper, viewHolder.mBuildDate, Gravity.NO_GRAVITY,
                 R.attr.actionOverflowMenuStyle, 0);
@@ -408,13 +371,13 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         MenuBuilder menu = (MenuBuilder) popupMenu.getMenu();
         MenuItem deleteAction = menu.findItem(R.id.menu_delete_action);
         MenuItem exportAction = menu.findItem(R.id.menu_export_update);
-        MenuItem incrementalPackageAction =  menu.findItem(R.id.menu_download_incremental_package);
-        MenuItem fullPackageAction =  menu.findItem(R.id.menu_download_full_package);
+        MenuItem incrementalPackageAction = menu.findItem(R.id.menu_download_incremental_package);
+        MenuItem fullPackageAction = menu.findItem(R.id.menu_download_full_package);
 
         deleteAction.setVisible(canDelete);
         exportAction.setVisible(
-                Utils.getPersistentStatus(mActivity) == UpdateStatus.Persistent.VERIFIED);
-        boolean shouldUseIncremental = Utils.shouldUseIncremental(mActivity);
+                Utils.getPersistentStatus(mContext) == UpdateStatus.Persistent.VERIFIED);
+        boolean shouldUseIncremental = Utils.shouldUseIncremental(mContext);
         boolean canToggleIncremental;
         switch (mUpdate.getStatus()) {
             case UNKNOWN:
@@ -471,11 +434,11 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
 
     private AlertDialog.Builder getInstallDialog() {
         if (!isBatteryLevelOk()) {
-            Resources resources = mActivity.getResources();
+            Resources resources = mContext.getResources();
             String message = resources.getString(R.string.dialog_battery_low_message_pct,
                     resources.getInteger(R.integer.battery_ok_percentage_discharging),
                     resources.getInteger(R.integer.battery_ok_percentage_charging));
-            return new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+            return new AlertDialog.Builder(mContext, R.style.AppTheme_AlertDialogStyle)
                     .setTitle(R.string.dialog_battery_low_title)
                     .setMessage(message)
                     .setPositiveButton(android.R.string.ok, null);
@@ -495,35 +458,28 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
             return null;
         }
 
-        return new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+        return new AlertDialog.Builder(mContext, R.style.AppTheme_AlertDialogStyle)
                 .setTitle(R.string.apply_update_dialog_title)
-                .setMessage(mActivity.getString(resId, update.getName(),
-                        mActivity.getString(android.R.string.ok)) + extraMessage)
+                .setMessage(mContext.getString(resId, update.getName(),
+                        mContext.getString(android.R.string.ok)) + extraMessage)
                 .setPositiveButton(android.R.string.ok,
-                        (dialog, which) -> Utils.triggerUpdate(mActivity))
+                        (dialog, which) -> Utils.triggerUpdate(mContext))
                 .setNegativeButton(android.R.string.cancel, null);
     }
 
     private void exportUpdate() {
-        boolean hasPermission = PermissionsUtils.checkAndRequestStoragePermission(
-                mActivity, ExportUpdateService.EXPORT_STATUS_PERMISSION_REQUEST_CODE);
-        if (!hasPermission) {
-            return;
-        }
-        File dest = new File(Utils.getExportPath(), mUpdate.getName());
-        Intent intent = new Intent(mActivity, ExportUpdateService.class);
-        intent.setAction(ExportUpdateService.ACTION_START_EXPORTING);
-        intent.putExtra(ExportUpdateService.EXTRA_SOURCE_FILE, mUpdate.getFile());
-        intent.putExtra(ExportUpdateService.EXTRA_DEST_FILE, dest);
-        mActivity.startService(intent);
+        Intent intent = new Intent(UpdatesActivity.ACTION_EXPORT_UPDATE);
+        intent.putExtra(UpdatesActivity.EXTRA_UPDATE_NAME, mUpdate.getName());
+        intent.putExtra(UpdatesActivity.EXTRA_UPDATE_FILE, mUpdate.getFile());
+        mBroadcastManager.sendBroadcast(intent);
     }
 
     private void showInfoDialog() {
-        String messageString = mActivity.getString(R.string.snack_update_not_installable);
+        String messageString = mContext.getString(R.string.snack_update_not_installable);
         if (infoDialog != null) {
             infoDialog.dismiss();
         }
-        infoDialog = new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+        infoDialog = new AlertDialog.Builder(mContext, R.style.AppTheme_AlertDialogStyle)
                 .setTitle(R.string.blocked_update_dialog_title)
                 .setPositiveButton(android.R.string.ok, null)
                 .setMessage(messageString)
@@ -575,16 +531,8 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
         }
     }
 
-    void onRequestPermissionsResult(int requestCode, int[] grantResults) {
-        if (grantResults.length > 0 &&
-                grantResults[0] == PackageManager.PERMISSION_GRANTED &&
-                requestCode == ExportUpdateService.EXPORT_STATUS_PERMISSION_REQUEST_CODE){
-            exportUpdate();
-        }
-    }
-
     private boolean isBatteryLevelOk() {
-        Intent intent = mActivity.registerReceiver(null,
+        Intent intent = mContext.registerReceiver(null,
                 new IntentFilter(Intent.ACTION_BATTERY_CHANGED));
         if (!intent.getBooleanExtra(BatteryManager.EXTRA_PRESENT, false)) {
             return true;
@@ -593,9 +541,15 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                 intent.getIntExtra(BatteryManager.EXTRA_SCALE, 100));
         int plugged = intent.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0);
         int required = (plugged & BATTERY_PLUGGED_ANY) != 0 ?
-                mActivity.getResources().getInteger(R.integer.battery_ok_percentage_charging) :
-                mActivity.getResources().getInteger(R.integer.battery_ok_percentage_discharging);
+                mContext.getResources().getInteger(R.integer.battery_ok_percentage_charging) :
+                mContext.getResources().getInteger(R.integer.battery_ok_percentage_discharging);
         return percent >= required;
+    }
+
+    private void showSnackbar(String text) {
+        Intent intent = new Intent(UpdatesActivity.ACTION_SHOW_SNACKBAR);
+        intent.putExtra(UpdatesActivity.EXTRA_SNACKBAR_TEXT, text);
+        mBroadcastManager.sendBroadcast(intent);
     }
 
     private enum Action {
