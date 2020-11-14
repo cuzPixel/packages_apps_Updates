@@ -513,7 +513,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
                 return outputString;
             } catch(IOException e) {
                 Log.e(TAG, "Could not fetch changelog from " + strings[0]);
-                return mActivity.getResources().getString(R.string.error_open_url);
+                return mContext.getResources().getString(R.string.error_open_url);
             }
         }
 
@@ -521,7 +521,7 @@ public class UpdatesListAdapter extends RecyclerView.Adapter<UpdatesListAdapter.
             if (infoDialog != null) {
                 infoDialog.dismiss();
             }
-            infoDialog = new AlertDialog.Builder(mActivity, R.style.AppTheme_AlertDialogStyle)
+            infoDialog = new AlertDialog.Builder(mContext, R.style.AppTheme_AlertDialogStyle)
                     .setTitle(R.string.details_button)
                     .setPositiveButton(android.R.string.ok, null)
                     .setMessage(result)
