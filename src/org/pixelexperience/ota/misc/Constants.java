@@ -32,8 +32,8 @@ public final class Constants {
     static final String PROP_AB_DEVICE = "ro.build.ab_update";
     static final String PROP_DEVICE = "org.pixelexperience.device";
     static final String PROP_BUILD_VERSION = "org.pixelexperience.version";
-    static final String OTA_URL = "https://raw.githubusercontent.com/cuzPixel/android_Updates/10.0/%s/%s.json";
+    static final String OTA_URL = "https://raw.githubusercontent.com/cuzPixel/android_Updates/11.0/%s/%s.json";
     static final String MAINTAINER_URL = "https://github.com/%s";
-    static final String CHANGELOG_URL = "https://raw.githubusercontent.com/cuzPixel/android_Updates/10.0/%s/%s_changelogs.txt";
+    static final String CHANGELOG_URL = "https://raw.githubusercontent.com/cuzPixel/android_Updates/11.0/%s/%s_changelogs.txt";
     static final String EXPORT_PATH = "PixelExperience-Updates/";
 }
